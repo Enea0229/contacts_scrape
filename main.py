@@ -17,7 +17,7 @@ def setup_database(db_name: str = "contacts.db") -> None:
         CREATE TABLE IF NOT EXISTS contacts (
             iid INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            title TEXT NOT NULL,
+            ext TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE
         )
     """)
@@ -28,7 +28,7 @@ def setup_database(db_name: str = "contacts.db") -> None:
 def save_to_database(contacts: List[Tuple[str, str, str]], db_name: str = "contacts.db") -> None:
     """
     把聯絡資訊聯絡資訊儲存到SQLite資料庫
-    contacts:包含 (姓名,職稱,Email)的tuple list
+    contacts:包含 (姓名,分機,Email)的tuple list
     db_name:SQLite資料庫檔案名稱
     """
     conn = sqlite3.connect(db_name)
@@ -36,7 +36,7 @@ def save_to_database(contacts: List[Tuple[str, str, str]], db_name: str = "conta
     for contact in contacts:
         try:
             cursor.execute("""
-                INSERT OR IGNORE INTO contacts (name, title, email)
+                INSERT OR IGNORE INTO contacts (name, ext, email)
                 VALUES (?, ?, ?)
             """, contact)
         except sqlite3.IntegrityError:
@@ -49,18 +49,20 @@ def parse_contacts(html: str) -> List[Tuple[str, str, str]]:
     """
     使用正規表達式從html中parse出聯絡資訊
     html:html之網頁內容
-    return:包含 (姓名,職稱,Email)的tuple list
+    return:包含 (姓名,分機,Email)的tuple list
     """
     contacts = []
-    name_pattern = r"Name:\s*(.+?)<"
-    title_pattern = r"Title:\s*(.+?)<"
-    email_pattern = r"Email:\s*([\w\.-]+@[\w\.-]+)"
+    name_pattern = r'title="([^"]+)"'
+    ext_pattern = r"分機\s*(\d+)"
+    email_pattern = r"信箱：([\w\.-]+@[\w\.-]+)"
     names = re.findall(name_pattern, html)
-    titles = re.findall(title_pattern, html)
+    exts = re.findall(ext_pattern, html)
     emails = re.findall(email_pattern, html)
-
-    for name, title, email in zip(names, titles, emails):
-        contacts.append((name.strip(), title.strip(), email.strip()))
+    # print(names)
+    # print(exts)
+    # print(emails)
+    for name, ext, email in zip(names, exts, emails):
+        contacts.append((name.strip(), ext.strip(), email.strip()))
     return contacts
 
 
@@ -68,11 +70,12 @@ def scrape_contacts(url: str) -> List[Tuple[str, str, str]]:
     """
     從使用者輸入的url中抓取聯絡資訊
     url:使用者輸入之url
-    return:包含 (姓名,職稱,Email)的tuple list
+    return:包含 (姓名,分機,Email)的tuple list
     """
     try:
         response = requests.get(url)
         response.raise_for_status()
+        # print(response.text)
         return parse_contacts(response.text)
     except requests.RequestException as e:
         messagebox.showerror("錯誤", f"無法抓取資料: {e}")
@@ -82,15 +85,26 @@ def scrape_contacts(url: str) -> List[Tuple[str, str, str]]:
 def display_contacts(contacts: List[Tuple[str, str, str]], text_widget: scrolledtext.ScrolledText) -> None:
     """
     在文字框中顯示聯絡資訊
-    contacts:包含 (姓名,職稱,Email)的tuple list
+    contacts:包含 (姓名,分機,Email)的tuple list
     text_widget:Tkinter的ScrolledText元件
     """
     text_widget.delete(1.0, tk.END)
+    # for contact in contacts:
+    #     text_widget.insert(tk.END, f"Name: {contact[0]}\n")
+    #     text_widget.insert(tk.END, f"Ext: {contact[1]}\n")
+    #     text_widget.insert(tk.END, f"Email: {contact[2]}\n")
+    #     text_widget.insert(tk.END, "-" * 40 + "\n")
+
+    header = f"{'姓名':<10}{'分機':<10}{'EMAIL':<30}\n"
+    separator = "-" * 60 + "\n"
+    text_widget.insert(tk.END, header)
+    text_widget.insert(tk.END, separator)
+
     for contact in contacts:
-        text_widget.insert(tk.END, f"Name: {contact[0]}\n")
-        text_widget.insert(tk.END, f"Title: {contact[1]}\n")
-        text_widget.insert(tk.END, f"Email: {contact[2]}\n")
-        text_widget.insert(tk.END, "-" * 40 + "\n")
+        row = f"{contact[0]:<9}{contact[1]:<12}{contact[2]:<30}\n"
+        text_widget.insert(tk.END, row)
+
+    text_widget.config(state=tk.DISABLED)
 
 
 def main():
@@ -99,7 +113,8 @@ def main():
         if not url:
             messagebox.showerror("錯誤", "請輸入網址")
             return
-        contacts = scrape_contacts(url)
+        # contacts = scrape_contacts(url)
+        contacts = scrape_contacts("https://ai.ncut.edu.tw/app/index.php?Action=mobileloadmod&Type=mobile_rcg_mstr&Nbr=730")
         if contacts:
             save_to_database(contacts)
             display_contacts(contacts, output_text)
